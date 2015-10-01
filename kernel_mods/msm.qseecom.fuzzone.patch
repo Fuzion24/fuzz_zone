@@ -1,0 +1,285 @@
+diff -r msm.modified/arch/arm/mach-msm/include/mach/scm.h msm.original/arch/arm/mach-msm/include/mach/scm.h
+15d14
+< 
+30,32d28
+< 
+< 
+< 
+34,35d29
+< extern int scm_call_with_command(u32 svc_id, u32 cmd_id, u32 len, u32 buf_offset, 
+<                           u32 resp_hdr_offset);
+38,39c32
+< extern int scm_call_no_remap_error(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
+< 		void *resp_buf, size_t resp_len);
+---
+> 
+diff -r msm.modified/arch/arm/mach-msm/scm.c msm.original/arch/arm/mach-msm/scm.c
+207,223d206
+< static int __scm_call_no_remap_error(const struct scm_command *cmd)
+< {
+< 	int ret;
+< 	u32 cmd_addr = virt_to_phys(cmd);
+< 
+< 	/*
+< 	 * Flush the entire cache here so callers don't have to remember
+< 	 * to flush the cache when passing physical addresses to the secure
+< 	 * side in the buffer.
+< 	 */
+< 	flush_cache_all();
+< 	outer_flush_all();
+< 	ret = smc(cmd_addr);
+< 
+< 	return ret;
+< }
+< 
+243,269d225
+< int scm_call_with_command(u32 svc_id, u32 cmd_id, u32 len, u32 buf_offset, 
+<                           u32 resp_hdr_offset)
+< {
+<     struct scm_command cmd;
+<     int ret;
+<     cmd.len = len;
+<     cmd.buf_offset = buf_offset;
+<     cmd.resp_hdr_offset = resp_hdr_offset;
+< 	cmd.id = (svc_id << 10) | cmd_id;
+< 
+< 	printk(KERN_INFO "Sending Fully formed SCM Command\n");
+< 	printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc_id, cmd_id);
+< 	printk(KERN_INFO "len: %08X, buf_offset: %08X, resp_hdr_offset: %08X\n", cmd.len, cmd.buf_offset, cmd.resp_hdr_offset);
+<     printk(KERN_INFO "Response buffer address: virtual-%08X, physical-%08X\n", ((unsigned)&cmd)+resp_hdr_offset, virt_to_phys((void*)(((unsigned)&cmd)+resp_hdr_offset)));
+<     mutex_lock(&scm_lock);
+<     ret = __scm_call(&cmd);
+< 	mutex_unlock(&scm_lock);
+< 	if (ret)
+< 		goto out;
+< 
+< 	printk(KERN_INFO "Finished SCM Call");
+< 
+< out:
+< 	return ret;
+< 
+< }
+< 
+289,304d244
+< 	//DEBUG: Printing information about the outgoing request
+< 	printk(KERN_INFO "Sending SCM Command\n");
+< 	printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc_id, cmd_id);
+< 	if (cmd_buf != NULL) {
+< 		size_t i;
+< 		char* buffer = kmalloc(2*cmd_len+1, GFP_ATOMIC);
+< 		buffer[0] = '\0';
+< 		for (i=0; i<cmd_len; i++) {
+< 			char sub_buf[3];
+< 			sprintf(sub_buf, "%02X", ((unsigned char*)cmd_buf)[i]); 
+< 			strcat(buffer, sub_buf);
+< 		}
+< 		printk(KERN_INFO "CMD BUF: %s\n", buffer);
+< 		kfree(buffer);
+< 	}
+< 
+331,346d270
+< 
+< 	//DEBUG
+< 	printk(KERN_INFO "Finished SCM Call");
+< 	if (resp_buf != NULL) {
+< 		size_t i;
+<                 char* buffer = kmalloc(2*resp_len+1, GFP_ATOMIC);
+<                 buffer[0] = '\0';
+<                 for (i=0; i<resp_len; i++) {
+<                         char sub_buf[3];
+<                         sprintf(sub_buf, "%02X", ((unsigned char*)resp_buf)[i]);
+<                         strcat(buffer, sub_buf);
+<                 }
+< 		printk(KERN_INFO "RESP BUF: %s\n", buffer);
+<                 kfree(buffer);
+< 	}
+< 
+353,435d276
+< /**
+<  * scm_call_no_remap_error() - Send an SCM command without remapping the error code
+<  * @svc_id: service identifier
+<  * @cmd_id: command identifier
+<  * @cmd_buf: command buffer
+<  * @cmd_len: length of the command buffer
+<  * @resp_buf: response buffer
+<  * @resp_len: length of the response buffer
+<  *
+<  * Sends a command to the SCM and waits for the command to finish processing.
+<  */
+< int scm_call_no_remap_error(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
+< 		void *resp_buf, size_t resp_len)
+< {
+< 	int ret;
+< 	struct scm_command *cmd;
+< 	struct scm_response *rsp;
+< 	unsigned long start, end;
+< 
+< 	//DEBUG: Printing information about the outgoing request
+< 	printk(KERN_INFO "Sending SCM Command (no remap!)\n");
+< 	printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc_id, cmd_id);
+< 	if (cmd_buf != NULL) {
+< 		size_t i;
+< 		char* buffer = kmalloc(2*cmd_len+1, GFP_ATOMIC);
+< 		buffer[0] = '\0';
+< 		for (i=0; i<cmd_len; i++) {
+< 			char sub_buf[3];
+< 			sprintf(sub_buf, "%02X", ((unsigned char*)cmd_buf)[i]); 
+< 			strcat(buffer, sub_buf);
+< 		}
+< 		printk(KERN_INFO "CMD BUF: %s\n", buffer);
+< 		kfree(buffer);
+< 	}
+< 
+< 	cmd = alloc_scm_command(cmd_len, resp_len);
+< 	if (!cmd)
+< 		return -ENOMEM;
+< 
+< 	cmd->id = (svc_id << 10) | cmd_id;
+< 	if (cmd_buf)
+< 		memcpy(scm_get_command_buffer(cmd), cmd_buf, cmd_len);
+< 
+< 	mutex_lock(&scm_lock);
+< 	ret = __scm_call_no_remap_error(cmd);
+< 	mutex_unlock(&scm_lock);
+< 	if (ret)
+< 		goto out;
+< 
+< 	rsp = scm_command_to_response(cmd);
+< 	start = (unsigned long)rsp;
+< 
+< 	do {
+< 		scm_inv_range(start, start + sizeof(*rsp));
+< 	} while (!rsp->is_complete);
+< 
+< 	end = (unsigned long)scm_get_response_buffer(rsp) + resp_len;
+< 	scm_inv_range(start, end);
+< 
+< 	if (resp_buf)
+< 		memcpy(resp_buf, scm_get_response_buffer(rsp), resp_len);
+< 
+< 	//DEBUG
+< 	printk(KERN_INFO "Finished SCM Call");
+< 	if (resp_buf != NULL) {
+< 		size_t i;
+<                 char* buffer = kmalloc(2*resp_len+1, GFP_ATOMIC);
+<                 buffer[0] = '\0';
+<                 for (i=0; i<resp_len; i++) {
+<                         char sub_buf[3];
+<                         sprintf(sub_buf, "%02X", ((unsigned char*)resp_buf)[i]);
+<                         strcat(buffer, sub_buf);
+<                 }
+< 		printk(KERN_INFO "RESP BUF: %s\n", buffer);
+<                 kfree(buffer);
+< 	}
+< 
+< out:
+< 	free_scm_command(cmd);
+< 	return ret;
+< }
+< EXPORT_SYMBOL(scm_call_no_remap_error);
+< 
+454d294
+< 
+472,475d311
+<     printk(KERN_INFO "Sending atomic SCM Command\n");
+<     printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc, cmd);
+<     printk(KERN_INFO "arg1: %08X\n", arg1);
+<     printk(KERN_INFO "res: %08X\n", r0);
+510,513d345
+<     printk(KERN_INFO "Sending atomic SCM Command\n");
+<     printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc, cmd);
+<     printk(KERN_INFO "arg1: %08X, arg2: %08X\n", arg1, arg2);
+<     printk(KERN_INFO "res: %08X\n", r0);
+551,554d382
+<     printk(KERN_INFO "Sending atomic SCM Command\n");
+<     printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc, cmd);
+<     printk(KERN_INFO "arg1: %08X, arg2: %08X, arg3: %08X\n", arg1, arg2, arg3);
+<     printk(KERN_INFO "res: %08X\n", r0);
+585,588d412
+<     printk(KERN_INFO "Sending atomic SCM command\n");
+<     printk(KERN_INFO "SVC_ID: %d, CMD_ID: %d\n", svc, cmd);
+<     printk(KERN_INFO "arg1: %08X, arg2: %08X, arg3: %08X, arg4: %08X\n", arg1, arg2, arg3, arg4);
+<     printk(KERN_INFO "r0: %08X, r1: %08X, r2: %08X\n", r0, r1, r2);
+diff -r msm.modified/drivers/misc/qseecom.c msm.original/drivers/misc/qseecom.c
+981,993d980
+<     {
+<         size_t i;
+<         char* buffer = kmalloc(2*req->cmd_req_len+1, GFP_ATOMIC);
+<         buffer[0] = '\0';
+<         for (i=0; i<req->cmd_req_len; i++) {
+<                 char sub_buf[3];
+<                 sprintf(sub_buf, "%02X", ((unsigned char*)req->cmd_req_buf)[i]);
+<                 strcat(buffer, sub_buf);
+<         }
+<         printk(KERN_INFO "CONTENT OF SEND CMD: %s\n", buffer);
+<         kfree(buffer);
+<     }
+< 
+1003,1005d989
+<     pr_err("Request pointer physical address: %p\n", send_data_req.req_ptr);
+<     pr_err("Response pointer physical address: %p\n", send_data_req.rsp_ptr);
+< 
+1036d1019
+< 
+2599,2642d2581
+< static int send_atomic_scm(void __user *argp)
+< {
+<     int ret = 0;
+< 	struct qseecom_send_atomic_scm_req req;
+< 	ret = copy_from_user(&req, argp, sizeof(req));
+< 	if (ret) {
+< 		pr_err("copy_from_user failed\n");
+< 		return ret;
+< 	}
+< 	pr_warning("Going to send atomic SCM request\n");
+<     if (req.num_args == 1) {
+<         ret = scm_call_atomic1(req.svc_id, req.cmd_id, req.arg1);
+<     }
+<     else if (req.num_args == 2) {
+<         ret = scm_call_atomic2(req.svc_id, req.cmd_id, req.arg1, req.arg2);
+<     }
+<     else if (req.num_args == 3) {
+<         ret = scm_call_atomic3(req.svc_id, req.cmd_id, req.arg1, req.arg2, req.arg3);
+<     }
+<     else if (req.num_args == 4) {
+<         u32 ret1;
+<         u32 ret2;
+<         ret = scm_call_atomic4_3(req.svc_id, req.cmd_id, req.arg1, req.arg2, req.arg3, req.arg4, &ret1, &ret2);
+<         pr_err("Atomic SCM RET1: %08X, RET2: %08X\n", ret1, ret2);
+<     }
+< 	pr_warning("Finished raw SCM request\n");
+< 	return ret;
+< }
+< 
+< static int send_raw_scm(void __user *argp)
+< {
+< 	int ret = 0;
+< 	struct qseecom_send_raw_scm_req req;
+< 	ret = copy_from_user(&req, argp, sizeof(req));
+< 	if (ret) {
+< 		pr_err("copy_from_user failed\n");
+< 		return ret;
+< 	}
+< 	pr_warning("Going to send raw SCM request (no remap error!)\n");
+< 	ret = scm_call_no_remap_error(req.svc_id, req.cmd_id, req.cmd_req_buf, req.cmd_req_len, req.resp_buf, req.resp_len);
+< 	pr_warning("Finished raw SCM request\n");
+< 	return ret;
+< }
+< 
+2873,2888d2811
+< 	case QSEECOM_IOCTL_SEND_RAW_SCM: {
+< 		atomic_inc(&data->ioctl_count);
+< 		ret = send_raw_scm(argp);
+< 		atomic_dec(&data->ioctl_count);
+<     	flush_cache_all();
+< 	    outer_flush_all();
+< 		break;
+< 	}
+<     case QSEECOM_IOCTL_SEND_ATOMIC_SCM: {
+< 		atomic_inc(&data->ioctl_count);
+< 		ret = send_atomic_scm(argp);
+< 		atomic_dec(&data->ioctl_count);
+<     	flush_cache_all();
+< 	    outer_flush_all();        
+<         break;
+<     }
